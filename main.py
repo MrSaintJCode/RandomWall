@@ -1,14 +1,13 @@
 import requests
 import os, sys, time
-from appscript import app, mactypes
 from datetime import datetime
 import sqlite3
 import shutil
-import cv2
+from config import DB_PATH, SAVED_DIR, ROOT_DIR, HOST_OS
 
 '''
 // TODO
--> Add Support for Linux/Windows OS
+-> Add Support for Linux
 -> Add Agent Option
 '''
 
@@ -41,8 +40,8 @@ colors_dict = {
 }
 # -- Dictonary Containing the color ranges in HSL --
 
-current_wallpaper = "current_wallpaper.txt"
-image_name = f"Desktop_{datetime.now()}.jpeg"
+current_wallpaper = os.path.join(ROOT_DIR, "current_wallpaper.txt")
+image_name = f"Desktop_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpeg"
 
 url = "https://source.unsplash.com/random/2560x1600"
 
@@ -70,19 +69,33 @@ def grab_new_wallpaper(url, image_name):
 def set_new_wallpaper(image_name, current_wallpaper):
     new_wallpaper = open(current_wallpaper, "w+")
     new_wallpaper.write(image_name)
-    app('Finder').desktop_picture.set(mactypes.File(image_name))
+    if HOST_OS == 'Darwin':
+        # Apple
+        from appscript import app, mactypes
+        app('Finder').desktop_picture.set(mactypes.File(os.path.join(ROOT_DIR, image_name)))
+    elif HOST_OS == 'Windows':
+        # Windows
+        import ctypes
+        ctypes.windll.user32.SystemParametersInfoW(20, 0, os.path.join(ROOT_DIR, image_name) , 3)
+    else:
+        error_handler("Unsupported OS")
+
+    new_wallpaper.close()
     print("")
     print(TermStyle.BOLD + TermStyle.OKGREEN + f"[+] New Wallpaper Set - {image_name}" + TermStyle.ENDC)
 
 def clean_old(current_wallpaper):
     current_image = open(current_wallpaper, "r")
     image_name = current_image.readline()
-    os.remove(image_name)
+    os.remove(os.path.join(ROOT_DIR, image_name))
+    current_image.close()
     os.remove(current_wallpaper)
     if os.path.isfile(current_wallpaper):
         error_handler(f"Couldn't Remove {current_wallpaper}")
+    
 
 def color_check(colors_dict, color, image_name):
+    import cv2
     img = cv2.imread(image_name)
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv,
@@ -97,7 +110,7 @@ def save_image(current_wallpaper):
     image_name = current_image.readline()
 
     # -- Creating Database/Tables --
-    database = "database/saved.db"
+    database = DB_PATH
     table = "Images"
     table_content = ["imageID", "imageName"] 
 
@@ -136,15 +149,15 @@ def save_image(current_wallpaper):
         # -- Checking if the entry exist -- 
         if results:
             # -- Copying Image --
-            saved_file = "database/images/"
-            shutil.copy(image_name, saved_file)
+            saved_file = SAVED_DIR
+            shutil.copy(os.path.join(ROOT_DIR, image_name), saved_file)
             print("")
             return print(TermStyle.BOLD + TermStyle.OKGREEN + "[+] Image Saved" + TermStyle.ENDC)
         else:
             error_handler("Couldn't Add Image to the Database")
 
 def view_saved(current_wallpaper):
-    database = "database/saved.db"
+    database = DB_PATH
     if os.path.isfile(database):
 
         with sqlite3.connect(database) as db:
@@ -175,7 +188,7 @@ ID   -   imageName     """ + TermStyle.ENDC)
                     for image in results:
                         image_name = image[1]
                     clean_old(current_wallpaper)
-                    saved_image = f"database/images/{image_name}"
+                    saved_image = os.path.join(SAVED_DIR, f"{image_name}")
                     shutil.copy(saved_image, ".")
                     set_new_wallpaper(image_name, current_wallpaper)
                     break
@@ -187,7 +200,7 @@ ID   -   imageName     """ + TermStyle.ENDC)
         return print(TermStyle.BOLD + TermStyle.WARNING + "[!] No Images Have Been Saved" + TermStyle.ENDC)
 
 def delete_saved():
-    database = "database/saved.db"
+    database = DB_PATH
     if os.path.isfile(database):
 
         with sqlite3.connect(database) as db:
@@ -216,9 +229,9 @@ ID   -   imageName     """ + TermStyle.ENDC)
                     delete_query = """DELETE from Images where imageID = ?"""
                     cursor.execute(delete_query,[(image[0])])
                     db.commit()
-                    if os.path.isfile(f"database/images/{image[1]}"):
-                        os.remove(f"database/images/{image[1]}")
-                        if os.path.isfile(f"database/images/{image[1]}"):
+                    if os.path.isfile(os.path.join(SAVED_DIR, f"{image[1]}")):
+                        os.remove(os.path.join(SAVED_DIR, f"{image[1]}"))
+                        if os.path.isfile(os.path.join(SAVED_DIR, f"database/images/{image[1]}")):
                             error_handler(f"Couldn't Remove {image[1]}")
                 
                 print("")
@@ -244,7 +257,7 @@ if __name__ == '__main__':
 |_|   |_|\_____||_| |_| \____| \___/ |_|_|_| \_____/ \_____| \_) \_)
 
                     """)
-            print(TermStyle.OKGREEN + TermStyle.BOLD + "Last Update - 05/08/2020            By - MrSaintJCode" + TermStyle.ENDC)
+            print(TermStyle.OKGREEN + TermStyle.BOLD + "Last Update - 19/11/2020            By - MrSaintJCode" + TermStyle.ENDC)
             print("")
             print(TermStyle.BOLD + TermStyle.WARNING + "---> CTRL-C TO EXIT <---" + TermStyle.ENDC)
             user_input = int(input(TermStyle.BOLD + "What would you like to do:\n1) New Wallpaper\n2) New Wallpaper - Color Select\n3) Save Current Wallpaper\n4) View Saved Wallpapers\n5) Delete a Saved Wallpaper\nOption: "))
